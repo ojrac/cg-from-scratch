@@ -107,25 +107,72 @@ var Clamp = function(v) {
 // ======================================================================
 
 // A Sphere.
-var Sphere = function(center, radius, color) {
-  this.center = center;
-  this.radius = radius;
-  this.color = color;
+class Sphere {
+  constructor(center, radius, color) {
+    this.center = center;
+    this.radius = radius;
+    this.color = color;
+  }
+
+  ray_distance(origin, direction, min_t, max_t) {
+      var [t1, t2] = IntersectRaySphere(origin, direction, this);
+      if (t1 < min_t || t1 > max_t) {
+        t1 = Infinity;
+      }
+      if (t2 < min_t || t2 > max_t) {
+        t2 = Infinity;
+      }
+      if (t1 < t2) {
+        return t1;
+      }
+      return t2;
+  }
+
+  get_normal(hit_point) {
+    const normal = Subtract(hit_point, this.center);
+    return Mul(1.0 / Length(normal), normal);
+  }
 }
 
-var AmbientLight = function(intensity) {
-  this.type = "ambient";
-  this.intensity = intensity;
+class AmbientLight {
+  constructor(intensity) {
+    this.intensity = intensity;
+  }
+
+  get_intensity(point, normal) {
+    return this.intensity;
+  }
 }
-var PointLight = function(intensity, position) {
-  this.type = "point";
-  this.intensity = intensity;
-  this.position = position;
+
+class PointLight {
+  constructor(intensity, position) {
+    this.intensity = intensity;
+    this.position = position;
+  }
+
+  get_intensity(point, normal) {
+    const light_direction = Subtract(this.position, point);
+    const n_dot_l = DotProduct(normal, light_direction);
+    if (n_dot_l <= 0) {
+      return 0;
+    }
+    return this.intensity * n_dot_l / (Length(normal) * Length(light_direction));
+  }
 }
-var DirectionalLight = function(intensity, direction) {
-  this.type = "directional";
-  this.intensity = intensity;
-  this.direction = direction;
+
+class DirectionalLight {
+  constructor(intensity, direction) {
+    this.intensity = intensity;
+    this.direction = direction;
+  }
+
+  get_intensity(point, normal) {
+    const n_dot_l = DotProduct(normal, this.direction);
+    if (n_dot_l <= 0) {
+      return 0;
+    }
+    return this.intensity * n_dot_l / (Length(normal) * Length(this.direction));
+  }
 }
 
 // Scene setup.
@@ -133,7 +180,7 @@ var viewport_size = 1;
 var projection_plane_z = 1;
 var camera_position = [0, 0, 0];
 var background_color = [255, 255, 255];
-var spheres = [
+var shapes = [
   new Sphere([0, -1, 3], 1, [255, 0, 0]),
   new Sphere([2, 0, 4], 1, [0, 0, 255]),
   new Sphere([-2, 0, 4], 1, [0, 255, 0]),
@@ -155,21 +202,7 @@ var CanvasToViewport = function(Cx, Cy) {
 var ComputeLighting = function(point, normal) {
   let intensity = 0.0;
   for (const light of lights) {
-    if (light.type == "ambient") {
-      intensity += light.intensity;
-    } else {
-      var light_direction;
-      if (light.type == "point") {
-        light_direction = Subtract(light.position, point);
-      } else {
-        light_direction = light.direction;
-      }
-
-      const n_dot_l = DotProduct(normal, light_direction);
-      if (n_dot_l > 0) {
-        intensity += light.intensity * n_dot_l / (Length(normal) * Length(light_direction));
-      }
-    }
+    intensity += light.get_intensity(point, normal);
   }
 
   return intensity;
@@ -194,31 +227,25 @@ var IntersectRaySphere = function(origin, direction, sphere) {
     return [t1, t2];
 }
 
-// Traces a ray against the set of spheres in the scene.
+// Traces a ray against the set of shapes in the scene.
 var TraceRay = function(origin, direction, min_t, max_t) {
     let closest_t = Infinity;
-    let closest_sphere = undefined;
-    for (const sphere of spheres) {
-        const [t1, t2] = IntersectRaySphere(origin, direction, sphere);
-        if (min_t < t1 && t1 < max_t && t1 < closest_t) {
-            closest_t = t1;
-            closest_sphere = sphere;
-        }
-        if (min_t < t2 && t2 < max_t && t2 < closest_t) {
-            closest_t = t2;
-            closest_sphere = sphere;
+    let closest_shape = undefined;
+    for (const shape of shapes) {
+        const intersection = shape.ray_distance(origin, direction, min_t, max_t);
+        if (intersection < closest_t) {
+          closest_t = intersection;
+          closest_shape = shape;
         }
     }
 
-    if (!closest_sphere) {
+    if (!closest_shape) {
         return background_color;
     }
 
     const hit_point = Add(origin, Mul(closest_t, direction));
-    let normal = Subtract(hit_point, closest_sphere.center);
-    normal = Mul(1.0 / Length(normal), normal);
-
-    return Mul(closest_sphere.color, ComputeLighting(hit_point, normal));
+    const normal = closest_shape.get_normal(hit_point);
+    return Mul(closest_shape.color, ComputeLighting(hit_point, normal));
 
     // unlit:
     //return closest_sphere.color;
