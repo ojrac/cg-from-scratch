@@ -20,6 +20,9 @@ var canvas_context = canvas.getContext("2d");
 var canvas_buffer = canvas_context.getImageData(0, 0, canvas.width, canvas.height);
 var canvas_pitch = canvas_buffer.width * 4;
 
+const conf_recursion_limit = 4;
+const conf_near_epsilon = 0.001;
+
 
 // The PutPixel() function.
 var PutPixel = function(x, y, color) {
@@ -115,11 +118,12 @@ var Clamp = function(v) {
 
 // A Sphere.
 class Sphere {
-  constructor(center, radius, color, specularity) {
+  constructor(center, radius, color, specularity, reflective) {
     this.center = center;
     this.radius = radius;
     this.color = color;
     this.specularity = specularity;
+    this.reflective = reflective;
   }
 
   ray_distance(origin, direction, min_t, max_t) {
@@ -177,12 +181,15 @@ class DirectionalLight {
   }
 }
 
+var ReflectRay = function(direction, normal) {
+    return Subtract(Mul(Mul(2, normal), DotProduct(normal, direction)), direction);
+}
+
 var IntensityOfDirectionalLight = function(point, intensity, normal, point_to_eye, light_direction, specularity, t_max) {
   var result = 0;
 
   // Shadow check
-  const near_epsilon = 0.001;
-  var [closest_shape, closest_t] = ClosestIntersection(point, light_direction, near_epsilon, t_max)
+  var [closest_shape, closest_t] = ClosestIntersection(point, light_direction, conf_near_epsilon, t_max)
   if (closest_shape) {
     return 0;
   }
@@ -195,7 +202,7 @@ var IntensityOfDirectionalLight = function(point, intensity, normal, point_to_ey
 
   // Specular
   if (specularity > 0) {
-    const reflection_direction = Subtract(Mul(Mul(2, normal), DotProduct(normal, light_direction)), light_direction);
+    const reflection_direction = ReflectRay(light_direction, normal);
     const r_dot_v = DotProduct(reflection_direction, point_to_eye);
     if (r_dot_v > 0) {
       result = Add(result, Mul(intensity, Math.pow(r_dot_v / (Length(reflection_direction) * Length(point_to_eye)), specularity)));
@@ -209,12 +216,12 @@ var IntensityOfDirectionalLight = function(point, intensity, normal, point_to_ey
 var viewport_size = 1;
 var projection_plane_z = 1;
 var camera_position = [0, 0, 0];
-var background_color = [255, 255, 255];
+var background_color = [0, 0, 0];
 var shapes = [
-  new Sphere([0, -1, 3], 1, [255, 0, 0], 500),
-  new Sphere([2, 0, 4], 1, [0, 0, 255], 500),
-  new Sphere([-2, 0, 4], 1, [0, 255, 0], 10),
-  new Sphere([0, -5001, 0], 5000, [255, 255, 0], 1000),
+  new Sphere([0, -1, 3], 1, [255, 0, 0], 500, 0.2),
+  new Sphere([2, 0, 4], 1, [0, 0, 255], 500, 0.3),
+  new Sphere([-2, 0, 4], 1, [0, 255, 0], 10, 0.4),
+  new Sphere([0, -5001, 0], 5000, [255, 255, 0], 1000, 0.5),
 ];
 var lights = [
   new AmbientLight(0.2),
@@ -271,7 +278,7 @@ var ClosestIntersection = function(origin, direction, min_t, max_t) {
 
     return [closest_shape, closest_t];
 }
-var TraceRay = function(origin, direction, min_t, max_t) {
+var TraceRay = function(origin, direction, min_t, max_t, recursion_limit) {
     let [closest_shape, closest_t] = ClosestIntersection(origin, direction, min_t, max_t);
     if (!closest_shape) {
         return background_color;
@@ -280,10 +287,17 @@ var TraceRay = function(origin, direction, min_t, max_t) {
     const hit_point = Add(origin, Mul(closest_t, direction));
     const normal = closest_shape.get_normal(hit_point);
     const point_to_eye = Subtract(0, direction);
-    return Mul(closest_shape.color, ComputeLighting(hit_point, normal, point_to_eye, closest_shape.specularity));
+    var local_color = Mul(closest_shape.color, ComputeLighting(hit_point, normal, point_to_eye, closest_shape.specularity));
 
-    // unlit:
-    //return closest_sphere.color;
+    // Repeat until recursion limit
+    const r = closest_shape.reflective;
+    if (recursion_limit <= 0 || r <= 0) {
+      return local_color;
+    }
+
+    const reflected_direction = ReflectRay(Subtract(0, direction), normal);
+    const reflected_color = TraceRay(hit_point, reflected_direction, conf_near_epsilon, Infinity, recursion_limit - 1);
+    return Add(Mul(local_color, (1 - r)), Mul(reflected_color, r));
 }
 
 //
@@ -292,7 +306,7 @@ var TraceRay = function(origin, direction, min_t, max_t) {
 for (var x = -canvas.width/2; x < canvas.width/2; x++) {
   for (var y = -canvas.height/2; y < canvas.height/2; y++) {
     var direction = CanvasToViewport(x, y)
-    var color = TraceRay(camera_position, direction, 1, Infinity);
+    var color = TraceRay(camera_position, direction, 1, Infinity, conf_recursion_limit);
     color = Clamp(color);
     PutPixel(x, y, color);
   }
