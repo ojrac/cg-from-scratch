@@ -160,7 +160,8 @@ class PointLight {
 
   get_intensity(point, normal, point_to_eye, specularity) {
     const light_direction = Subtract(this.position, point);
-    return IntensityOfDirectionalLight(this.intensity, normal, point_to_eye, light_direction, specularity);
+    const t_max = 1;
+    return IntensityOfDirectionalLight(point, this.intensity, normal, point_to_eye, light_direction, specularity);
   }
 }
 
@@ -171,12 +172,20 @@ class DirectionalLight {
   }
 
   get_intensity(point, normal, point_to_eye, specularity) {
-    return IntensityOfDirectionalLight(this.intensity, normal, point_to_eye, this.direction, specularity);
+    const t_max = Infinity;
+    return IntensityOfDirectionalLight(point, this.intensity, normal, point_to_eye, this.direction, specularity, t_max);
   }
 }
 
-var IntensityOfDirectionalLight = function(intensity, normal, point_to_eye, light_direction, specularity) {
+var IntensityOfDirectionalLight = function(point, intensity, normal, point_to_eye, light_direction, specularity, t_max) {
   var result = 0;
+
+  // Shadow check
+  const near_epsilon = 0.001;
+  var [closest_shape, closest_t] = ClosestIntersection(point, light_direction, near_epsilon, t_max)
+  if (closest_shape) {
+    return 0;
+  }
 
   // Diffuse
   const n_dot_l = DotProduct(normal, light_direction);
@@ -249,7 +258,7 @@ var IntersectRaySphere = function(origin, direction, sphere) {
 }
 
 // Traces a ray against the set of shapes in the scene.
-var TraceRay = function(origin, direction, min_t, max_t) {
+var ClosestIntersection = function(origin, direction, min_t, max_t) {
     let closest_t = Infinity;
     let closest_shape = undefined;
     for (const shape of shapes) {
@@ -260,6 +269,10 @@ var TraceRay = function(origin, direction, min_t, max_t) {
         }
     }
 
+    return [closest_shape, closest_t];
+}
+var TraceRay = function(origin, direction, min_t, max_t) {
+    let [closest_shape, closest_t] = ClosestIntersection(origin, direction, min_t, max_t);
     if (!closest_shape) {
         return background_color;
     }
