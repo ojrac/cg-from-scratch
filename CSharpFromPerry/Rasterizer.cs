@@ -19,8 +19,7 @@ internal sealed class Rasterizer
 	private readonly float ViewportH;
 	private readonly float ViewportZ = 1.0f;
 
-	private readonly Color BackgroundColor = Color.White;
-	private readonly Vector3 CameraPosition = Vector3.Zero;
+	private readonly Color BackgroundColor = Color.Black;
 
 	public Rasterizer(GraphicsDevice graphicsDevice, int w, int h)
 	{
@@ -42,33 +41,74 @@ internal sealed class Rasterizer
 
 	public void Update(GameTime _)
 	{
+		Clear(BackgroundColor);
+
+		DrawLine(new Point(-200, -100), new Point(240, 120), Color.White);
+		DrawLine(new Point(-50, -200), new Point(60, 240), Color.White);
+
 		var texture = Textures[TextureIndex];
+		texture.SetData(TextureData);
+	}
 
-		var halfCanvasW = CanvasW >> 1;
-		var halfCanvasH = CanvasH >> 1;
-
-		for (var x = -halfCanvasW; x < halfCanvasW; x++)
-		{
-			for (var y = -halfCanvasH; y < halfCanvasH; y++)
-			{
-				var color = Color.BlueViolet;
-				PutPixel(x, y, color);
+	public void DrawLine(Point p0, Point p1, Color color) {
+		if (Math.Abs(p1.X - p0.X) > Math.Abs(p1.Y - p0.Y)) {
+			// More horizontal
+			if (p0.X > p1.X) {
+				(p0, p1) = (p1, p0);
+			}
+			var yVals = Interpolate(p0.X, p0.Y, p1.X, p1.Y);
+			for (int x = p0.X; x <= p1.X; ++x) {
+				PutPixel(x, yVals[x - p0.X], color);
+			}
+		
+		} else {
+			// More vertical
+			if (p0.Y > p1.Y) {
+				(p0, p1) = (p1, p0);
+			}
+			var xVals = Interpolate(p0.Y, p0.X, p1.Y, p1.X);
+			for (int y = p0.Y; y <= p1.Y; ++y) {
+				PutPixel(xVals[y - p0.Y], y, color);
 			}
 		}
+	}
 
-		texture.SetData(TextureData);
+	private static int[] Interpolate(int i0, int d0, int i1, int d1) {
+		if (i0 == i1) {
+			return new int[]{ d0 };
+		}
+
+		int count = i1 - i0 + 1;
+		var values = new int[count];
+		float a = (d1 - d0) / (float)(i1 - i0);
+		float d = d0;
+
+		for (int i = 0; i < count; i++) {
+			values[i] = (int)d;
+			d += a;
+		}
+
+		return values;
 	}
 
 	private void PutPixel(int canvasX, int canvasY, Color color)
 	{
 		var x = canvasX + (CanvasW >> 1);
 		var y = (CanvasH >> 1) - canvasY - 1;
-		TextureData[y * CanvasW + x] = ToRgba(color);
+		var idx = y * CanvasW + x;
+		if (idx < 0 || idx >= TextureData.Length) {
+			return;
+		}
+		TextureData[idx] = ToRgba(color);
 	}
 
 	private Vector3 CanvasToViewport(int canvasX, int canvasY)
 	{
 		return new Vector3(canvasX * ViewportW / CanvasW, canvasY * ViewportH / CanvasH, ViewportZ);
+	}
+
+	private void Clear(Color color) {
+		Array.Fill(TextureData, ToRgba(color));
 	}
 	private static uint ToRgba(Color color)
 	{

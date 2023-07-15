@@ -7,7 +7,7 @@ namespace ComputerGraphicsFromScratch;
 internal sealed class Game1 : Game
 {
 	private const int W = 640;
-	private const int H = 480;
+	private const int H = 640;
 
 	private GraphicsDeviceManager Graphics;
 	private SpriteBatch SpriteBatch;
