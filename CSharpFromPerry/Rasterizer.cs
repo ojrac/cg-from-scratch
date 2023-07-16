@@ -19,7 +19,7 @@ internal sealed class Rasterizer
 	private readonly float ViewportH;
 	private readonly float ViewportZ = 1.0f;
 
-	private readonly Color BackgroundColor = Color.Black;
+	private readonly Color BackgroundColor = Color.White;
 
 	public Rasterizer(GraphicsDevice graphicsDevice, int w, int h)
 	{
@@ -53,10 +53,69 @@ internal sealed class Rasterizer
 		// DrawFilledTriangle(p0, p1, p2, Color.Green);
 		// DrawWireframeTriangle(p0, p1, p2, Color.White);
 
-		DrawCube();
+		// DrawShadedTriangle(new Vertex(p0, 0), new Vertex(p1, 0), new Vertex(p2, 1), Color.Green);
 
+		DrawCube();
+		
 		var texture = Textures[TextureIndex];
 		texture.SetData(TextureData);
+	}
+
+	public void DrawShadedTriangle(Vertex v0, Vertex v1, Vertex v2, Color color) {
+		// Sort so y0 <= y1 <= y2
+		if (v1.Y < v0.Y) {
+			(v0, v1) = (v1, v0);
+		}
+		if (v2.Y < v0.Y) {
+			(v0, v2) = (v2, v0);
+		}
+		if (v2.Y < v1.Y) {
+			(v1, v2) = (v2, v1);
+		}
+
+		// Build lists of x and h coordinates of each edge
+		var x01 = Interpolate(v0.Y, v0.X, v1.Y, v1.X);
+		var h01 = Interpolate(v0.Y, v0.H, v1.Y, v1.H);
+
+		var x12 = Interpolate(v1.Y, v1.X, v2.Y, v2.X);
+		var h12 = Interpolate(v1.Y, v1.H, v2.Y, v2.H);
+
+		var x02 = Interpolate(v0.Y, v0.X, v2.Y, v2.X);
+		var h02 = Interpolate(v0.Y, v0.H, v2.Y, v2.H);
+
+		// Concatenate the short sides
+		var x012 = JoinInterpolated(x01, x12);
+		var h012 = JoinInterpolated(h01, h12);
+
+		// Mark the left and right sides
+		int[] xLeft, xRight;
+		float[] hLeft, hRight;
+		var midIdx = (int)(x012.Length / 2.0);
+		if (x02[midIdx] < x012[midIdx]) {
+			xLeft = x02;
+			hLeft = h02;
+			xRight = x012;
+			hRight = h012;
+		} else {
+			xLeft = x012;
+			hLeft = h012;
+			xRight = x02;
+			hRight = h02;
+		}
+
+		// Draw the horizontal segments
+		for (int y = v0.Y; y <= v2.Y; ++y) {
+			var idx = y - v0.Y;
+			var xL = xLeft[idx];
+			var xR = xRight[idx];
+			var hSegment = Interpolate(xL, hLeft[idx], xR, hRight[idx]);
+
+			for (int x = xL; x <= xR; ++x) {
+				var h = hSegment[x - xL];
+				var shadedColor = new Color((byte)(h * color.R), (byte)(h * color.G), (byte)(h * color.B));
+				PutPixel(x, y, shadedColor);
+			}
+		}
 	}
 
 	public void DrawFilledTriangle(Point p0, Point p1, Point p2, Color color) {
@@ -77,9 +136,7 @@ internal sealed class Rasterizer
 		var x02 = Interpolate(p0.Y, p0.X, p2.Y, p2.X);
 
 		// Concatenate the short sides
-		var x012 = new int[x01.Length + x12.Length - 1];
-		Array.ConstrainedCopy(x01, 0, x012, 0, x01.Length - 1);
-		Array.ConstrainedCopy(x12, 0, x012, x01.Length - 1, x12.Length);
+		var x012 = JoinInterpolated(x01, x12);
 
 		// Mark the left and right sides
 		int[] xLeft, xRight;
@@ -176,6 +233,13 @@ internal sealed class Rasterizer
 		return ViewportToCanvas(v.X * ViewportZ / v.Z, v.Y * ViewportZ / v.Z);
 	}
 
+	private static T[] JoinInterpolated<T>(T[] a, T[] b) {
+		var result = new T[a.Length + b.Length - 1];
+		Array.ConstrainedCopy(a, 0, result, 0, a.Length - 1);
+		Array.ConstrainedCopy(b, 0, result, a.Length - 1, b.Length);
+		return result;
+	}
+
 	private static int[] Interpolate(int i0, int d0, int i1, int d1) {
 		if (i0 == i1) {
 			return new int[]{ d0 };
@@ -188,6 +252,23 @@ internal sealed class Rasterizer
 
 		for (int i = 0; i < count; i++) {
 			values[i] = (int)d;
+			d += a;
+		}
+
+		return values;
+	}
+	private static float[] Interpolate(int i0, float d0, int i1, float d1) {
+		if (i0 == i1) {
+			return new float[]{ d0 };
+		}
+
+		int count = i1 - i0 + 1;
+		var values = new float[count];
+		float a = (d1 - d0) / (i1 - i0);
+		float d = d0;
+
+		for (int i = 0; i < count; i++) {
+			values[i] = (float)d;
 			d += a;
 		}
 
