@@ -43,11 +43,65 @@ internal sealed class Rasterizer
 	{
 		Clear(BackgroundColor);
 
-		DrawLine(new Point(-200, -100), new Point(240, 120), Color.White);
-		DrawLine(new Point(-50, -200), new Point(60, 240), Color.White);
+		// DrawLine(new Point(-200, -100), new Point(240, 120), Color.White);
+		// DrawLine(new Point(-50, -200), new Point(60, 240), Color.White);
+
+		Point p0 = new(-200, -250);
+		Point p1 = new(200, 50);
+		Point p2 = new(20, 250);
+
+		DrawFilledTriangle(p0, p1, p2, Color.Green);
+		DrawWireframeTriangle(p0, p1, p2, Color.White);
 
 		var texture = Textures[TextureIndex];
 		texture.SetData(TextureData);
+	}
+
+	public void DrawFilledTriangle(Point p0, Point p1, Point p2, Color color) {
+		// Sort so y0 <= y1 <= y2
+		if (p1.Y < p0.Y) {
+			(p0, p1) = (p1, p0);
+		}
+		if (p2.Y < p0.Y) {
+			(p0, p2) = (p2, p0);
+		}
+		if (p2.Y < p1.Y) {
+			(p1, p2) = (p2, p1);
+		}
+
+		// Build lists of x coordinates of each edge
+		var x01 = Interpolate(p0.Y, p0.X, p1.Y, p1.X);
+		var x12 = Interpolate(p1.Y, p1.X, p2.Y, p2.X);
+		var x02 = Interpolate(p0.Y, p0.X, p2.Y, p2.X);
+
+		// Concatenate the short sides
+		var x012 = new int[x01.Length + x12.Length - 1];
+		Array.ConstrainedCopy(x01, 0, x012, 0, x01.Length - 1);
+		Array.ConstrainedCopy(x12, 0, x012, x01.Length - 1, x12.Length);
+
+		// Mark the left and right sides
+		int[] xLeft, xRight;
+		var midIdx = (int)(x012.Length / 2.0);
+		if (x02[midIdx] < x012[midIdx]) {
+			xLeft = x02;
+			xRight = x012;
+		} else {
+			xLeft = x012;
+			xRight = x02;
+		}
+
+		// Draw the horizontal segments
+		for (int y = p0.Y; y <= p2.Y; ++y) {
+			for (int x = xLeft[y - p0.Y]; x <= xRight[y - p0.Y]; ++x) {
+				PutPixel(x, y, color);
+			}
+		}
+	}
+
+	public void DrawWireframeTriangle(Point p0, Point p1, Point p2, Color color) {
+		DrawLine(p0, p1, color);
+		DrawLine(p1, p2, color);
+		DrawLine(p2, p0, color);
 	}
 
 	public void DrawLine(Point p0, Point p1, Color color) {
