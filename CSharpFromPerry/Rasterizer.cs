@@ -46,12 +46,14 @@ internal sealed class Rasterizer
 		// DrawLine(new Point(-200, -100), new Point(240, 120), Color.White);
 		// DrawLine(new Point(-50, -200), new Point(60, 240), Color.White);
 
-		Point p0 = new(-200, -250);
-		Point p1 = new(200, 50);
-		Point p2 = new(20, 250);
+		// Point p0 = new(-200, -250);
+		// Point p1 = new(200, 50);
+		// Point p2 = new(20, 250);
 
-		DrawFilledTriangle(p0, p1, p2, Color.Green);
-		DrawWireframeTriangle(p0, p1, p2, Color.White);
+		// DrawFilledTriangle(p0, p1, p2, Color.Green);
+		// DrawWireframeTriangle(p0, p1, p2, Color.White);
+
+		DrawCube();
 
 		var texture = Textures[TextureIndex];
 		texture.SetData(TextureData);
@@ -104,6 +106,38 @@ internal sealed class Rasterizer
 		DrawLine(p2, p0, color);
 	}
 
+	public void DrawCube() {
+		// Front
+		Vector3 vAf = new(-2, -0.5f, 5);
+		Vector3 vBf = new(-2,  0.5f, 5);
+		Vector3 vCf = new(-1,  0.5f, 5);
+		Vector3 vDf = new(-1, -0.5f, 5);
+
+		// Back
+		Vector3 vAb = new(-2, -0.5f, 6);
+		Vector3 vBb = new(-2,  0.5f, 6);
+		Vector3 vCb = new(-1,  0.5f, 6);
+		Vector3 vDb = new(-1, -0.5f, 6);
+
+		// Front face
+		DrawLine(ProjectVertex(vAf), ProjectVertex(vBf), Color.Blue);
+		DrawLine(ProjectVertex(vBf), ProjectVertex(vCf), Color.Blue);
+		DrawLine(ProjectVertex(vCf), ProjectVertex(vDf), Color.Blue);
+		DrawLine(ProjectVertex(vDf), ProjectVertex(vAf), Color.Blue);
+
+		// Back face
+		DrawLine(ProjectVertex(vAb), ProjectVertex(vBb), Color.Red);
+		DrawLine(ProjectVertex(vBb), ProjectVertex(vCb), Color.Red);
+		DrawLine(ProjectVertex(vCb), ProjectVertex(vDb), Color.Red);
+		DrawLine(ProjectVertex(vDb), ProjectVertex(vAb), Color.Red);
+
+		// Front to back edges
+		DrawLine(ProjectVertex(vAf), ProjectVertex(vAb), Color.Green);
+		DrawLine(ProjectVertex(vBf), ProjectVertex(vBb), Color.Green);
+		DrawLine(ProjectVertex(vCf), ProjectVertex(vCb), Color.Green);
+		DrawLine(ProjectVertex(vDf), ProjectVertex(vDb), Color.Green);
+	}
+
 	public void DrawLine(Point p0, Point p1, Color color) {
 		if (Math.Abs(p1.X - p0.X) > Math.Abs(p1.Y - p0.Y)) {
 			// More horizontal
@@ -125,6 +159,21 @@ internal sealed class Rasterizer
 				PutPixel(xVals[y - p0.Y], y, color);
 			}
 		}
+	}
+
+	public Point ViewportToCanvas(Point point) {
+		return ViewportToCanvas(point.X, point.Y);
+	}
+
+	public Point ViewportToCanvas(float x, float y) {
+		return new Point(
+			(int)(x * CanvasW / ViewportW),
+			(int)(y * CanvasH / ViewportH));
+	}
+
+
+	public Point ProjectVertex(Vector3 v) {
+		return ViewportToCanvas(v.X * ViewportZ / v.Z, v.Y * ViewportZ / v.Z);
 	}
 
 	private static int[] Interpolate(int i0, int d0, int i1, int d1) {
@@ -154,11 +203,6 @@ internal sealed class Rasterizer
 			return;
 		}
 		TextureData[idx] = ToRgba(color);
-	}
-
-	private Vector3 CanvasToViewport(int canvasX, int canvasY)
-	{
-		return new Vector3(canvasX * ViewportW / CanvasW, canvasY * ViewportH / CanvasH, ViewportZ);
 	}
 
 	private void Clear(Color color) {
