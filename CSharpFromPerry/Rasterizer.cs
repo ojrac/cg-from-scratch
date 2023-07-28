@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Color = Microsoft.Xna.Framework.Color;
+using Microsoft.Xna.Framework.Input;
 
 namespace ComputerGraphicsFromScratch;
 
@@ -19,7 +20,15 @@ internal sealed class Rasterizer
 	private readonly float ViewportH;
 	private readonly float ViewportZ = 1.0f;
 
-	private readonly Color BackgroundColor = Color.White;
+	private readonly Color BackgroundColor = Color.Black;
+	private readonly Model CubeModel;
+
+	private readonly Camera Camera = new();
+	private readonly List<ModelInstance> ModelInstances;
+
+	// For debugging
+	private bool MoveModeCamera = true;
+	private KeyboardState LastKeyboardState;
 
 	public Rasterizer(GraphicsDevice graphicsDevice, int w, int h)
 	{
@@ -37,10 +46,93 @@ internal sealed class Rasterizer
 		}
 
 		TextureData = new uint[CanvasW * CanvasH];
+
+		CubeModel = new Model(
+			new Vector3[] {
+				new( 1,  1,  1),
+				new(-1,  1,  1),
+				new(-1, -1,  1),
+				new( 1, -1,  1),
+				new( 1,  1, -1),
+				new(-1,  1, -1),
+				new(-1, -1, -1),
+				new( 1, -1, -1),
+			},
+			new Triangle[] {
+				new(0, 1, 2, Color.Red),
+				new(0, 2, 3, Color.Red),
+				new(4, 0, 3, Color.Green),
+				new(4, 3, 7, Color.Green),
+				new(5, 4, 7, Color.Blue),
+				new(5, 7, 6, Color.Blue),
+				new(1, 5, 6, Color.Yellow),
+				new(1, 6, 2, Color.Yellow),
+				new(4, 5, 1, Color.Purple),
+				new(4, 1, 0, Color.Purple),
+				new(2, 6, 7, Color.Cyan),
+				new(2, 7, 3, Color.Cyan),
+			}
+		);
+
+		Camera.Position = new(-3, 1, 2);
+		Camera.YawDegrees = 30;
+
+		ModelInstances = new List<ModelInstance> {
+			//new(CubeModel, new Transform(new Vector3(0, 0, 10), Quaternion.Identity, Vector3.One)),
+			new(CubeModel, new Transform(new Vector3(-1.5f, 0, 7), Quaternion.Identity, Vector3.One * 0.75f)),
+			new(CubeModel, new Transform(new Vector3(1.25f, 2.5f, 7.5f), Quaternion.CreateFromAxisAngle(new Vector3(0, 1, 0), 195), Vector3.One)),
+		};
 	}
 
-	public void Update(GameTime _)
+	float GetAxis(GameTime time, Keys negative, Keys positive) {
+		float total = 0;
+		var ks = Keyboard.GetState();
+		if (ks.IsKeyDown(negative)) {
+			total -= 1;
+		}
+		if (ks.IsKeyDown(positive)) {
+			total += 1;
+		}
+		return (float)(time.ElapsedGameTime.TotalSeconds * total);
+	}
+
+	public void Update(GameTime time)
 	{
+		var kb = Keyboard.GetState();
+		if (kb.IsKeyDown(Keys.Tab) && LastKeyboardState.IsKeyUp(Keys.Tab))
+		{
+			// Toggle mode
+			MoveModeCamera = !MoveModeCamera;
+		}
+		LastKeyboardState = kb;
+
+		// Camera wsadqe and rotation
+		if (MoveModeCamera)
+		{
+			Camera.Pitch += GetAxis(time, Keys.Up, Keys.Down);
+			Camera.Yaw += GetAxis(time, Keys.Left, Keys.Right);
+			Camera.Position.X += GetAxis(time, Keys.A, Keys.D);
+			Camera.Position.Z += GetAxis(time, Keys.S, Keys.W);
+			Camera.Position.Y += GetAxis(time, Keys.E, Keys.Q);
+		} else {
+			if (ModelInstances.Count > 0)
+			{
+				var transform = ModelInstances[0].Transform;
+
+				transform.Scale.X += GetAxis(time, Keys.OemMinus, Keys.OemPlus);
+				transform.Scale.Y += GetAxis(time, Keys.OemMinus, Keys.OemPlus);
+				transform.Scale.Z += GetAxis(time, Keys.OemMinus, Keys.OemPlus);
+
+				transform.Rotation *= Quaternion.CreateFromAxisAngle(new Vector3(1, 0, 0), GetAxis(time, Keys.Up, Keys.Down));
+				transform.Rotation *= Quaternion.CreateFromAxisAngle(new Vector3(0, 1, 0), GetAxis(time, Keys.Left, Keys.Right));
+				transform.Translation.X += GetAxis(time, Keys.A, Keys.D);
+				transform.Translation.Z += GetAxis(time, Keys.S, Keys.W);
+				transform.Translation.Y += GetAxis(time, Keys.E, Keys.Q);
+				
+				ModelInstances[0].Transform = transform;
+			}
+		}
+
 		Clear(BackgroundColor);
 
 		// DrawLine(new Point(-200, -100), new Point(240, 120), Color.White);
@@ -55,7 +147,13 @@ internal sealed class Rasterizer
 
 		// DrawShadedTriangle(new Vertex(p0, 0), new Vertex(p1, 0), new Vertex(p2, 1), Color.Green);
 
-		DrawCube();
+		var CameraMatrix = Camera.GetView();
+
+		for (int i = 0; i < ModelInstances.Count; ++i) {
+			var instance = ModelInstances[i];
+			var matrix = instance.Transform.AsMatrix() * CameraMatrix;
+			RenderModel(instance.Model, ref matrix);
+		}
 		
 		var texture = Textures[TextureIndex];
 		texture.SetData(TextureData);
@@ -118,6 +216,29 @@ internal sealed class Rasterizer
 		}
 	}
 
+	public void RenderModel(Model model, ref Matrix transform) {
+		var vertices = model.Vertices;
+		Point[] projectedVertices = new Point[vertices.Length];
+		for (int i = 0; i < vertices.Length; ++i) {
+			var transformed = Vector3.Transform(vertices[i], transform);
+			projectedVertices[i] = ProjectVertex(transformed);
+		}
+
+		var triangles = model.Triangles;
+		for (int i = 0; i < triangles.Length; ++i)
+		{
+			RenderTriangle(triangles[i], projectedVertices);
+		}
+	}
+
+	public void RenderTriangle(Triangle triangle, Point[] projectedVertices) {
+		DrawWireframeTriangle(
+			projectedVertices[triangle.I0],
+			projectedVertices[triangle.I1],
+			projectedVertices[triangle.I2],
+			triangle.Color);
+	}
+
 	public void DrawFilledTriangle(Point p0, Point p1, Point p2, Color color) {
 		// Sort so y0 <= y1 <= y2
 		if (p1.Y < p0.Y) {
@@ -161,38 +282,6 @@ internal sealed class Rasterizer
 		DrawLine(p0, p1, color);
 		DrawLine(p1, p2, color);
 		DrawLine(p2, p0, color);
-	}
-
-	public void DrawCube() {
-		// Front
-		Vector3 vAf = new(-2, -0.5f, 5);
-		Vector3 vBf = new(-2,  0.5f, 5);
-		Vector3 vCf = new(-1,  0.5f, 5);
-		Vector3 vDf = new(-1, -0.5f, 5);
-
-		// Back
-		Vector3 vAb = new(-2, -0.5f, 6);
-		Vector3 vBb = new(-2,  0.5f, 6);
-		Vector3 vCb = new(-1,  0.5f, 6);
-		Vector3 vDb = new(-1, -0.5f, 6);
-
-		// Front face
-		DrawLine(ProjectVertex(vAf), ProjectVertex(vBf), Color.Blue);
-		DrawLine(ProjectVertex(vBf), ProjectVertex(vCf), Color.Blue);
-		DrawLine(ProjectVertex(vCf), ProjectVertex(vDf), Color.Blue);
-		DrawLine(ProjectVertex(vDf), ProjectVertex(vAf), Color.Blue);
-
-		// Back face
-		DrawLine(ProjectVertex(vAb), ProjectVertex(vBb), Color.Red);
-		DrawLine(ProjectVertex(vBb), ProjectVertex(vCb), Color.Red);
-		DrawLine(ProjectVertex(vCb), ProjectVertex(vDb), Color.Red);
-		DrawLine(ProjectVertex(vDb), ProjectVertex(vAb), Color.Red);
-
-		// Front to back edges
-		DrawLine(ProjectVertex(vAf), ProjectVertex(vAb), Color.Green);
-		DrawLine(ProjectVertex(vBf), ProjectVertex(vBb), Color.Green);
-		DrawLine(ProjectVertex(vCf), ProjectVertex(vCb), Color.Green);
-		DrawLine(ProjectVertex(vDf), ProjectVertex(vDb), Color.Green);
 	}
 
 	public void DrawLine(Point p0, Point p1, Color color) {
@@ -297,9 +386,26 @@ internal sealed class Rasterizer
 		       | ((uint)color.A << 24);
 	}
 
-	public void Draw(SpriteBatch spriteBatch)
+	public void Draw(SpriteBatch spriteBatch, SpriteFont monospaceFont)
 	{
 		spriteBatch.Draw(Textures[TextureIndex], new Vector2(0, 0), null, Color.White);
 		TextureIndex = (TextureIndex + 1) % NumTextures;
+
+		// Camera
+		if (MoveModeCamera)
+		{
+			spriteBatch.DrawString(monospaceFont, $"Camera at:  {Camera.Position}\nCamera rot: X={Camera.PitchDegrees}, Y={Camera.YawDegrees}", Vector2.Zero, Color.White);
+		}
+		else
+		{
+			// First model
+			if (ModelInstances.Count > 0)
+			{
+				var t = ModelInstances[0].Transform;
+				spriteBatch.DrawString(
+					monospaceFont,
+					$"P: {t.Translation}\nS: {t.Scale}\nR: {t.Rotation}", Vector2.Zero, Color.White);
+			}
+		}
 	}
 }

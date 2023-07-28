@@ -12,6 +12,7 @@ internal sealed class Game1 : Game
 	private GraphicsDeviceManager Graphics;
 	private SpriteBatch SpriteBatch;
 	private readonly Rasterizer Rasterizer;
+	private SpriteFont MonospaceFont;
 
 	public Game1()
 	{
@@ -35,6 +36,7 @@ internal sealed class Game1 : Game
 	protected override void LoadContent()
 	{
 		SpriteBatch = new SpriteBatch(GraphicsDevice);
+		MonospaceFont = Content.Load<SpriteFont>("Fonts/Monospace");
 	}
 
 	protected override void Update(GameTime gameTime)
@@ -52,7 +54,7 @@ internal sealed class Game1 : Game
 		GraphicsDevice.Clear(Color.CornflowerBlue);
 
 		SpriteBatch.Begin();
-		Rasterizer.Draw(SpriteBatch);
+		Rasterizer.Draw(SpriteBatch, MonospaceFont);
 		SpriteBatch.End();
 
 		base.Draw(gameTime);
