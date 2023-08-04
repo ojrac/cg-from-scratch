@@ -33,6 +33,13 @@ class Camera {
 
     public Vector3 Position;
 
+    public Plane[] ClippingPlanes;
+
+    public Camera(Vector3 Position, Plane[] ClippingPlanes) {
+        this.Position = Position;
+        this.ClippingPlanes = ClippingPlanes;
+    }
+
     public Matrix GetView() {
         return Matrix.Transpose(Matrix.CreateFromYawPitchRoll(Yaw, Pitch, 0)) * Matrix.CreateTranslation(-Position);
     }
@@ -57,9 +64,12 @@ struct Model {
     public Vector3[] Vertices { get; private set; }
     public Triangle[] Triangles { get; private set; }
 
-    public Model(Vector3[] vertices, Triangle[] triangles) {
+    public readonly float BoundsRadius;
+
+    public Model(Vector3[] vertices, Triangle[] triangles, float boundsRadius) {
         Vertices = vertices;
         Triangles = triangles;
+        BoundsRadius = boundsRadius;
     }
 }
 

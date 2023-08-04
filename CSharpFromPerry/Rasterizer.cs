@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Color = Microsoft.Xna.Framework.Color;
 using Microsoft.Xna.Framework.Input;
+using System.Reflection.Metadata;
 
 namespace ComputerGraphicsFromScratch;
 
@@ -23,7 +24,18 @@ internal sealed class Rasterizer
 	private readonly Color BackgroundColor = Color.Black;
 	private readonly Model CubeModel;
 
-	private readonly Camera Camera = new();
+	private static readonly float OneOverSqrtTwo = 1.0f / MathF.Sqrt(2);
+
+	private readonly Camera Camera = new(
+		Vector3.Zero,
+		new Plane[] {
+			new Plane(new Vector3(0, 0, 1), -1), // Near
+			new Plane(new Vector3(OneOverSqrtTwo, 0, OneOverSqrtTwo), 0), // Left
+			new Plane(new Vector3(-OneOverSqrtTwo, 0, OneOverSqrtTwo), 0), // Right
+			new Plane(new Vector3(0, -OneOverSqrtTwo, OneOverSqrtTwo), 0), // Top
+			new Plane(new Vector3(0, OneOverSqrtTwo, OneOverSqrtTwo), 0), // Bottom
+		}
+	);
 	private readonly List<ModelInstance> ModelInstances;
 
 	// For debugging
@@ -71,7 +83,8 @@ internal sealed class Rasterizer
 				new(4, 1, 0, Color.Purple),
 				new(2, 6, 7, Color.Cyan),
 				new(2, 7, 3, Color.Cyan),
-			}
+			},
+			(float)Math.Sqrt(3)
 		);
 
 		Camera.Position = new(-3, 1, 2);
@@ -217,6 +230,10 @@ internal sealed class Rasterizer
 	}
 
 	public void RenderModel(Model model, ref Matrix transform) {
+		// Check if model is in bounds, and track whether it's intersecting any clip planes or fully visible
+		var intersectingPlanes = new List<Plane>(Camera.ClippingPlanes);
+
+		// If at least partially visible, project the vertices before trying to clip triangles
 		var vertices = model.Vertices;
 		Point[] projectedVertices = new Point[vertices.Length];
 		for (int i = 0; i < vertices.Length; ++i) {
@@ -224,14 +241,54 @@ internal sealed class Rasterizer
 			projectedVertices[i] = ProjectVertex(transformed);
 		}
 
-		var triangles = model.Triangles;
+		if (intersectingPlanes.Count <= 0)
+		{
+			// If the triangle is fully in bounds, just render it
+			var triangles = model.Triangles;
+			for (int i = 0; i < triangles.Length; ++i)
+			{
+				RenderTriangle(triangles[i], projectedVertices);
+			}
+			return;
+		}
+
+		// Clip the model's triangles against all potentially intersecting planes
+		var clippedTriangles = new List<Triangle>(model.Triangles);
+		for (int iPlane = 0; iPlane < intersectingPlanes.Count; ++iPlane)
+		{
+			var plane = intersectingPlanes[iPlane];
+			// Iterate backwards so we can append if needed
+			for (int iTriangle = clippedTriangles.Count - 1; iTriangle >= 0; --iTriangle)
+			{
+				var triangle = clippedTriangles[iTriangle];
+
+				var d0 = plane.DotCoordinate(projectedVertices[triangle.I0])
+			}
+		}
 		for (int i = 0; i < triangles.Length; ++i)
 		{
-			RenderTriangle(triangles[i], projectedVertices);
+			// If the model is partially in bounds, clip the triangle before rendering
+			if (bFullyInBounds)
+			{
+				RenderTriangle(triangles[i], projectedVertices);
+				continue;
+			}
+		
+			foreach (var plane in Camera.ClippingPlanes)
+			{
+
+			}
 		}
 	}
 
 	public void RenderTriangle(Triangle triangle, Point[] projectedVertices) {
+		DrawWireframeTriangle(
+			projectedVertices[triangle.I0],
+			projectedVertices[triangle.I1],
+			projectedVertices[triangle.I2],
+			triangle.Color);
+	}
+	public void RenderTriangleWithVertices(Triangle triangle, Point[] projectedVertices) {
 		DrawWireframeTriangle(
 			projectedVertices[triangle.I0],
 			projectedVertices[triangle.I1],
